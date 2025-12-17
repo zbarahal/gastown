@@ -187,6 +187,11 @@ wyvern/                            # Rig = container (NOT a git clone)
 │   ├── state.json                 # May not need its own clone
 │   └── mail/inbox.jsonl
 │
+├── crew/                          # Overseer's personal workspaces
+│   ├── dave/                      # Full git clone (user-managed)
+│   ├── emma/                      # Full git clone (user-managed)
+│   └── fred/                      # Full git clone (user-managed)
+│
 └── mayor/                         # Mayor's presence in this rig
     ├── rig/                       # Mayor's rig-specific clone
     └── state.json
@@ -271,6 +276,13 @@ For reference without mermaid rendering:
 │   │   ├── mail/inbox.jsonl
 │   │   └── state.json
 │   │
+│   ├── crew/                            # Overseer's personal workspaces
+│   │   ├── dave/                        # Full clone (user-managed)
+│   │   │   ├── .git/
+│   │   │   └── <project files>
+│   │   ├── emma/                        # Full clone (user-managed)
+│   │   └── fred/                        # Full clone (user-managed)
+│   │
 │   ├── mayor/                           # Mayor's rig-specific clone
 │   │   ├── rig/                         # Mayor's clone for this rig
 │   │   │   ├── .git/
@@ -288,6 +300,7 @@ For reference without mermaid rendering:
     ├── polecats/
     ├── refinery/
     ├── witness/
+    ├── crew/
     └── mayor/
 ```
 
