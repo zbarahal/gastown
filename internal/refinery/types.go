@@ -278,6 +278,59 @@ func (mr *MergeRequest) IsClosed() bool {
 	return mr.Status == MRClosed
 }
 
+// FailureType categorizes merge failures for appropriate handling.
+type FailureType string
+
+const (
+	// FailureNone indicates no failure (success).
+	FailureNone FailureType = ""
+
+	// FailureConflict indicates merge conflicts with target branch.
+	FailureConflict FailureType = "conflict"
+
+	// FailureTestsFail indicates tests failed after merge.
+	FailureTestsFail FailureType = "tests_fail"
+
+	// FailureBuildFail indicates build failed after merge.
+	FailureBuildFail FailureType = "build_fail"
+
+	// FailureFlakyTest indicates a potentially flaky test failure (may retry).
+	FailureFlakyTest FailureType = "flaky_test"
+
+	// FailurePushFail indicates push to remote failed.
+	FailurePushFail FailureType = "push_fail"
+
+	// FailureFetch indicates fetch of source branch failed.
+	FailureFetch FailureType = "fetch_fail"
+
+	// FailureCheckout indicates checkout of target branch failed.
+	FailureCheckout FailureType = "checkout_fail"
+)
+
+// FailureLabel returns the beads label for this failure type.
+func (f FailureType) FailureLabel() string {
+	switch f {
+	case FailureConflict:
+		return "needs-rebase"
+	case FailureTestsFail, FailureBuildFail, FailureFlakyTest:
+		return "needs-fix"
+	case FailurePushFail:
+		return "needs-retry"
+	default:
+		return ""
+	}
+}
+
+// ShouldAssignToWorker returns true if this failure should be assigned back to the worker.
+func (f FailureType) ShouldAssignToWorker() bool {
+	switch f {
+	case FailureConflict, FailureTestsFail, FailureBuildFail, FailureFlakyTest:
+		return true
+	default:
+		return false
+	}
+}
+
 // IsOpen returns true if the MR is in an open state (waiting for processing).
 func (mr *MergeRequest) IsOpen() bool {
 	return mr.Status == MROpen

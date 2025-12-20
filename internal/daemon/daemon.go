@@ -12,7 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/steveyegge/gastown/internal/config"
+	"github.com/steveyegge/gastown/internal/git"
 	"github.com/steveyegge/gastown/internal/keepalive"
+	"github.com/steveyegge/gastown/internal/rig"
 	"github.com/steveyegge/gastown/internal/tmux"
 )
 
@@ -180,23 +183,97 @@ func (d *Daemon) pokeMayor() {
 }
 
 // pokeWitnesses sends heartbeats to all Witness sessions.
+// Uses proper rig discovery from rigs.json instead of scanning tmux sessions.
 func (d *Daemon) pokeWitnesses() {
-	// Find all rigs by looking for witness sessions
-	// Session naming: gt-<rig>-witness
-	sessions, err := d.tmux.ListSessions()
-	if err != nil {
-		d.logger.Printf("Error listing sessions: %v", err)
+	// Discover rigs from configuration
+	rigs := d.discoverRigs()
+	if len(rigs) == 0 {
+		d.logger.Println("No rigs discovered")
 		return
 	}
 
-	for _, session := range sessions {
-		// Check if it's a witness session
-		if !isWitnessSession(session) {
+	for _, r := range rigs {
+		session := fmt.Sprintf("gt-%s-witness", r.Name)
+
+		// Check if witness session exists
+		running, err := d.tmux.HasSession(session)
+		if err != nil {
+			d.logger.Printf("Error checking witness session for rig %s: %v", r.Name, err)
+			continue
+		}
+
+		if !running {
+			// Rig exists but no witness session - log for visibility
+			d.logger.Printf("Rig %s has no witness session (may need: gt witness start %s)", r.Name, r.Name)
 			continue
 		}
 
 		d.pokeWitness(session)
 	}
+}
+
+// discoverRigs finds all registered rigs using the rig manager.
+// Falls back to directory scanning if rigs.json is not available.
+func (d *Daemon) discoverRigs() []*rig.Rig {
+	// Load rigs config from mayor/rigs.json
+	rigsConfigPath := filepath.Join(d.config.TownRoot, "mayor", "rigs.json")
+	rigsConfig, err := config.LoadRigsConfig(rigsConfigPath)
+	if err != nil {
+		// Try fallback: scan town directory for rig directories
+		return d.discoverRigsFromDirectory()
+	}
+
+	// Use rig manager for proper discovery
+	g := git.NewGit(d.config.TownRoot)
+	mgr := rig.NewManager(d.config.TownRoot, rigsConfig, g)
+	rigs, err := mgr.DiscoverRigs()
+	if err != nil {
+		d.logger.Printf("Error discovering rigs from config: %v", err)
+		return d.discoverRigsFromDirectory()
+	}
+
+	return rigs
+}
+
+// discoverRigsFromDirectory scans the town directory for rig directories.
+// A directory is considered a rig if it has a .beads subdirectory or config.json.
+func (d *Daemon) discoverRigsFromDirectory() []*rig.Rig {
+	entries, err := os.ReadDir(d.config.TownRoot)
+	if err != nil {
+		d.logger.Printf("Error reading town directory: %v", err)
+		return nil
+	}
+
+	var rigs []*rig.Rig
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		// Skip known non-rig directories
+		if name == "mayor" || name == "daemon" || name == ".git" || name[0] == '.' {
+			continue
+		}
+
+		dirPath := filepath.Join(d.config.TownRoot, name)
+
+		// Check for .beads directory (indicates a rig)
+		beadsPath := filepath.Join(dirPath, ".beads")
+		if _, err := os.Stat(beadsPath); err == nil {
+			rigs = append(rigs, &rig.Rig{Name: name, Path: dirPath})
+			continue
+		}
+
+		// Check for config.json with type: rig
+		configPath := filepath.Join(dirPath, "config.json")
+		if _, err := os.Stat(configPath); err == nil {
+			// For simplicity, assume any directory with config.json is a rig
+			rigs = append(rigs, &rig.Rig{Name: name, Path: dirPath})
+		}
+	}
+
+	return rigs
 }
 
 // pokeWitness sends a heartbeat to a single witness session with backoff.
