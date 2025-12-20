@@ -340,6 +340,8 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	// Notify Witness about the spawn - Witness will monitor startup and nudge when ready
 	// Note: If Witness is down, Deacon's health check will wake it and Witness will
 	// process the SPAWN message from its inbox on startup.
+	// Use town-level beads for cross-agent mail (gt-c6b: mail coordination uses town-level)
+	townRouter := mail.NewRouter(townRoot)
 	witnessAddr := fmt.Sprintf("%s/witness", rigName)
 	sender := detectSender()
 	spawnNotification := &mail.Message{
@@ -361,7 +363,7 @@ in the tmux session), send a nudge to start working:
 The polecat has a work assignment in its inbox.`, polecatName, assignmentID, sessMgr.SessionName(polecatName), sender, sessMgr.SessionName(polecatName)),
 	}
 
-	if err := router.Send(spawnNotification); err != nil {
+	if err := townRouter.Send(spawnNotification); err != nil {
 		fmt.Printf("  %s\n", style.Dim.Render(fmt.Sprintf("Warning: could not notify witness: %v", err)))
 	} else {
 		fmt.Printf("  %s\n", style.Dim.Render("Witness notified to monitor startup"))
