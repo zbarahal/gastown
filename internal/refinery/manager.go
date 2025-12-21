@@ -209,12 +209,17 @@ func (m *Manager) Start(foreground bool) error {
 	}
 
 	// Start Claude agent with full permissions (like polecats)
-	// The agent will run gt prime to load refinery context and start processing
 	command := "claude --dangerously-skip-permissions"
 	if err := t.SendKeys(sessionID, command); err != nil {
 		// Clean up the session on failure
 		_ = t.KillSession(sessionID)
 		return fmt.Errorf("starting Claude agent: %w", err)
+	}
+
+	// Prime the agent after Claude starts to load refinery context
+	if err := t.SendKeysDelayed(sessionID, "gt prime", 2000); err != nil {
+		// Warning only - don't fail startup
+		fmt.Printf("Warning: could not send prime command: %v\n", err)
 	}
 
 	return nil

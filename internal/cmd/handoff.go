@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -128,6 +130,16 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("sending lifecycle request: %w", err)
 	}
 	fmt.Printf("%s Sent %s request to %s\n", style.Bold.Render("✓"), action, manager)
+
+	// Signal daemon for immediate processing (if manager is deacon)
+	if manager == "deacon/" {
+		if err := signalDaemon(townRoot); err != nil {
+			// Non-fatal: daemon will eventually poll
+			fmt.Printf("%s Could not signal daemon (will poll): %v\n", style.Dim.Render("○"), err)
+		} else {
+			fmt.Printf("%s Signaled daemon for immediate processing\n", style.Bold.Render("✓"))
+		}
+	}
 
 	// Set requesting state
 	if err := setRequestingState(role, action, townRoot); err != nil {
@@ -456,4 +468,29 @@ func setRequestingState(role Role, action HandoffAction, townRoot string) error 
 	}
 
 	return os.WriteFile(stateFile, data, 0644)
+}
+
+// signalDaemon sends SIGUSR1 to the daemon to trigger immediate lifecycle processing.
+func signalDaemon(townRoot string) error {
+	pidFile := filepath.Join(townRoot, "daemon", "daemon.pid")
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return fmt.Errorf("reading daemon PID: %w", err)
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return fmt.Errorf("parsing daemon PID: %w", err)
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("finding daemon process: %w", err)
+	}
+
+	if err := process.Signal(syscall.SIGUSR1); err != nil {
+		return fmt.Errorf("signaling daemon: %w", err)
+	}
+
+	return nil
 }

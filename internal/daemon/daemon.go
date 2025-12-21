@@ -85,7 +85,7 @@ func (d *Daemon) Run() error {
 
 	// Handle signals
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
 	// Heartbeat ticker
 	ticker := time.NewTicker(d.config.HeartbeatInterval)
@@ -103,8 +103,14 @@ func (d *Daemon) Run() error {
 			return d.shutdown(state)
 
 		case sig := <-sigChan:
-			d.logger.Printf("Received signal %v, shutting down", sig)
-			return d.shutdown(state)
+			if sig == syscall.SIGUSR1 {
+				// SIGUSR1: immediate lifecycle processing (from gt handoff)
+				d.logger.Println("Received SIGUSR1, processing lifecycle requests immediately")
+				d.processLifecycleRequests()
+			} else {
+				d.logger.Printf("Received signal %v, shutting down", sig)
+				return d.shutdown(state)
+			}
 
 		case <-ticker.C:
 			d.heartbeat(state)
