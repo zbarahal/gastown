@@ -24,6 +24,7 @@ var (
 	shutdownGraceful     bool
 	shutdownWait         int
 	shutdownAll          bool
+	shutdownForce        bool
 	shutdownYes          bool
 	shutdownPolecatsOnly bool
 	shutdownNuclear      bool
@@ -62,8 +63,8 @@ Shutdown levels (progressively more aggressive):
   --all           - Also stop crew sessions
   --polecats-only - Only stop polecats (leaves everything else running)
 
+Use --force or --yes to skip confirmation prompt.
 Use --graceful to allow agents time to save state before killing.
-Use --yes to skip confirmation prompt.
 Use --nuclear to force cleanup even if polecats have uncommitted work (DANGER).`,
 	RunE: runShutdown,
 }
@@ -78,6 +79,8 @@ func init() {
 		"Seconds to wait for graceful shutdown (default 30)")
 	shutdownCmd.Flags().BoolVarP(&shutdownAll, "all", "a", false,
 		"Also stop crew sessions (by default, crew is preserved)")
+	shutdownCmd.Flags().BoolVarP(&shutdownForce, "force", "f", false,
+		"Skip confirmation prompt (alias for --yes)")
 	shutdownCmd.Flags().BoolVarP(&shutdownYes, "yes", "y", false,
 		"Skip confirmation prompt")
 	shutdownCmd.Flags().BoolVar(&shutdownPolecatsOnly, "polecats-only", false,
@@ -279,7 +282,7 @@ func runShutdown(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Confirmation prompt
-	if !shutdownYes {
+	if !shutdownYes && !shutdownForce {
 		fmt.Printf("Proceed with shutdown? [y/N] ")
 		reader := bufio.NewReader(os.Stdin)
 		response, _ := reader.ReadString('\n')
@@ -327,7 +330,7 @@ func categorizeSessions(sessions []string) (toStop, preserved []string) {
 				preserved = append(preserved, sess)
 			}
 		} else if shutdownAll {
-			// Stop everything
+			// Stop everything including crew
 			toStop = append(toStop, sess)
 		} else {
 			// Default: preserve crew
