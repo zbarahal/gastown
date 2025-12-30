@@ -214,6 +214,18 @@ gt sling <bead> <rig>        # Assign to polecat
 gt sling <bead> <rig> --molecule=<proto>
 ```
 
+### Swarm Management
+```bash
+gt swarm create <rig> --epic <id> --worker <name>  # Create swarm
+gt swarm create <rig> --epic <id> --worker <name> --start  # Create and start
+gt swarm start <swarm-id>       # Start a created swarm
+gt swarm status <swarm-id>      # Show swarm status
+gt swarm list [rig]             # List swarms
+gt swarm dispatch <epic-id>     # Assign next ready task to idle worker
+gt swarm land <swarm-id>        # Land completed swarm to main
+gt swarm cancel <swarm-id>      # Cancel active swarm
+```
+
 ### Communication
 ```bash
 gt mail inbox
@@ -316,4 +328,4 @@ bd mol bond mol-security-scan $PATROL_ID --var scope="$SCOPE"
 
 **Nondeterministic idempotence**: Any worker can continue any molecule. Steps are atomic checkpoints in beads.
 
-<!-- TODO: Add architecture diagram -->
+**Swarm coordination**: Swarms parallelize work across multiple polecats. Each swarm has an integration branch where completed tasks merge before landing to main. See [Swarms](swarm.md) for details.
