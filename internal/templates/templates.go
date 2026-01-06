@@ -241,32 +241,6 @@ func CommandNames() ([]string, error) {
 	return names, nil
 }
 
-// CreateMayorCLAUDEmd creates the Mayor's CLAUDE.md file at the specified directory.
-// This is used by both gt install and gt doctor --fix.
-func CreateMayorCLAUDEmd(mayorDir, townRoot, townName, mayorSession, deaconSession string) error {
-	tmpl, err := New()
-	if err != nil {
-		return err
-	}
-
-	data := RoleData{
-		Role:          "mayor",
-		TownRoot:      townRoot,
-		TownName:      townName,
-		WorkDir:       mayorDir,
-		MayorSession:  mayorSession,
-		DeaconSession: deaconSession,
-	}
-
-	content, err := tmpl.RenderRole("mayor", data)
-	if err != nil {
-		return err
-	}
-
-	claudePath := filepath.Join(mayorDir, "CLAUDE.md")
-	return os.WriteFile(claudePath, []byte(content), 0644)
-}
-
 // HasCommands checks if a workspace has the .claude/commands/ directory provisioned.
 func HasCommands(workspacePath string) bool {
 	commandsDir := filepath.Join(workspacePath, ".claude", "commands")

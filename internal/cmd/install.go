@@ -172,20 +172,37 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("   ✓ Created mayor/rigs.json\n")
 
-	// Create Mayor CLAUDE.md at HQ root (Mayor runs from there)
-	if err := createMayorCLAUDEmd(absPath, absPath); err != nil {
+	// Create Mayor CLAUDE.md at mayor/ (Mayor's canonical home)
+	// IMPORTANT: CLAUDE.md must be in ~/gt/mayor/, NOT ~/gt/
+	// CLAUDE.md at town root would be inherited by ALL agents via directory traversal,
+	// causing crew/polecat/etc to receive Mayor-specific instructions.
+	if err := createMayorCLAUDEmd(mayorDir, absPath); err != nil {
 		fmt.Printf("   %s Could not create CLAUDE.md: %v\n", style.Dim.Render("⚠"), err)
 	} else {
-		fmt.Printf("   ✓ Created CLAUDE.md\n")
+		fmt.Printf("   ✓ Created mayor/CLAUDE.md\n")
 	}
 
-	// Ensure Mayor has Claude settings with SessionStart hooks.
-	// This ensures gt prime runs on Claude startup, which outputs the Mayor
-	// delegation protocol - critical for preventing direct implementation.
-	if err := claude.EnsureSettingsForRole(absPath, "mayor"); err != nil {
-		fmt.Printf("   %s Could not create .claude/settings.json: %v\n", style.Dim.Render("⚠"), err)
+	// Create mayor settings (mayor runs from ~/gt/mayor/)
+	// IMPORTANT: Settings must be in ~/gt/mayor/.claude/, NOT ~/gt/.claude/
+	// Settings at town root would be found by ALL agents via directory traversal,
+	// causing crew/polecat/etc to cd to town root before running commands.
+	// mayorDir already defined above
+	if err := os.MkdirAll(mayorDir, 0755); err != nil {
+		fmt.Printf("   %s Could not create mayor directory: %v\n", style.Dim.Render("⚠"), err)
+	} else if err := claude.EnsureSettingsForRole(mayorDir, "mayor"); err != nil {
+		fmt.Printf("   %s Could not create mayor settings: %v\n", style.Dim.Render("⚠"), err)
 	} else {
-		fmt.Printf("   ✓ Created .claude/settings.json\n")
+		fmt.Printf("   ✓ Created mayor/.claude/settings.json\n")
+	}
+
+	// Create deacon directory and settings (deacon runs from ~/gt/deacon/)
+	deaconDir := filepath.Join(absPath, "deacon")
+	if err := os.MkdirAll(deaconDir, 0755); err != nil {
+		fmt.Printf("   %s Could not create deacon directory: %v\n", style.Dim.Render("⚠"), err)
+	} else if err := claude.EnsureSettingsForRole(deaconDir, "deacon"); err != nil {
+		fmt.Printf("   %s Could not create deacon settings: %v\n", style.Dim.Render("⚠"), err)
+	} else {
+		fmt.Printf("   ✓ Created deacon/.claude/settings.json\n")
 	}
 
 	// Initialize git BEFORE beads so that bd can compute repository fingerprint.
@@ -260,32 +277,15 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func createMayorCLAUDEmd(hqRoot, townRoot string) error {
-	tmpl, err := templates.New()
-	if err != nil {
-		return err
-	}
-
-	// Get town name for session names
+func createMayorCLAUDEmd(mayorDir, townRoot string) error {
 	townName, _ := workspace.GetTownName(townRoot)
-
-	data := templates.RoleData{
-		Role:          "mayor",
-		TownRoot:      townRoot,
-		TownName:      townName,
-		WorkDir:       hqRoot,
-		DefaultBranch: "main", // Mayor doesn't merge, but field required
-		MayorSession:  session.MayorSessionName(),
-		DeaconSession: session.DeaconSessionName(),
-	}
-
-	content, err := tmpl.RenderRole("mayor", data)
-	if err != nil {
-		return err
-	}
-
-	claudePath := filepath.Join(hqRoot, "CLAUDE.md")
-	return os.WriteFile(claudePath, []byte(content), 0644)
+	return templates.CreateMayorCLAUDEmd(
+		mayorDir,
+		townRoot,
+		townName,
+		session.MayorSessionName(),
+		session.DeaconSessionName(),
+	)
 }
 
 func writeJSON(path string, data interface{}) error {

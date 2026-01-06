@@ -7,24 +7,38 @@ Technical reference for Gas Town internals. Read the README first.
 ```
 ~/gt/                           Town root
 ├── .beads/                     Town-level beads (hq-* prefix)
-├── mayor/                      Mayor config
-│   └── town.json
+├── mayor/                      Mayor agent home (town coordinator)
+│   ├── town.json               Town configuration
+│   ├── CLAUDE.md               Mayor context (on disk)
+│   └── .claude/settings.json   Mayor Claude settings
+├── deacon/                     Deacon agent home (background supervisor)
+│   └── .claude/settings.json   Deacon settings (context via gt prime)
 └── <rig>/                      Project container (NOT a git clone)
     ├── config.json             Rig identity
     ├── .beads/ → mayor/rig/.beads
     ├── .repo.git/              Bare repo (shared by worktrees)
     ├── mayor/rig/              Mayor's clone (canonical beads)
-    ├── refinery/rig/           Worktree on main
-    ├── witness/                No clone (monitors only)
-    ├── crew/<name>/            Human workspaces
-    └── polecats/<name>/        Worker worktrees
+    │   └── CLAUDE.md           Per-rig mayor context (on disk)
+    ├── witness/                Witness agent home (monitors only)
+    │   └── .claude/settings.json  (context via gt prime)
+    ├── refinery/               Refinery settings parent
+    │   ├── .claude/settings.json
+    │   └── rig/                Worktree on main
+    │       └── CLAUDE.md       Refinery context (on disk)
+    ├── crew/                   Crew settings parent (shared)
+    │   ├── .claude/settings.json  (context via gt prime)
+    │   └── <name>/rig/         Human workspaces
+    └── polecats/               Polecat settings parent (shared)
+        ├── .claude/settings.json  (context via gt prime)
+        └── <name>/rig/         Worker worktrees
 ```
 
 **Key points:**
 
 - Rig root is a container, not a clone
 - `.repo.git/` is bare - refinery and polecats are worktrees
-- Mayor clone holds canonical `.beads/`, others inherit via redirect
+- Per-rig `mayor/rig/` holds canonical `.beads/`, others inherit via redirect
+- Settings placed in parent dirs (not git clones) for upward traversal
 
 ## Beads Routing
 
@@ -213,46 +227,81 @@ Understanding this hierarchy is essential for proper configuration.
 
 | Role | Working Directory | Notes |
 |------|-------------------|-------|
-| **Mayor** | `~/gt/mayor/` | Isolated from child agents |
-| **Deacon** | `~/gt/deacon/` | Background supervisor |
-| **Witness** | `~/gt/<rig>/witness/` | No git clone, monitors only |
+| **Mayor** | `~/gt/mayor/` | Town-level coordinator, isolated from rigs |
+| **Deacon** | `~/gt/deacon/` | Background supervisor daemon |
+| **Witness** | `~/gt/<rig>/witness/` | No git clone, monitors polecats only |
 | **Refinery** | `~/gt/<rig>/refinery/rig/` | Worktree on main branch |
-| **Crew** | `~/gt/<rig>/crew/<name>/rig/` | Persistent clone |
-| **Polecat** | `~/gt/<rig>/polecats/<name>/rig/` | Ephemeral worktree |
+| **Crew** | `~/gt/<rig>/crew/<name>/rig/` | Persistent human workspace clone |
+| **Polecat** | `~/gt/<rig>/polecats/<name>/rig/` | Ephemeral worker worktree |
+
+Note: The per-rig `<rig>/mayor/rig/` directory is NOT a working directory—it's
+a git clone that holds the canonical `.beads/` database for that rig.
 
 ### Settings File Locations
 
 Claude Code searches for `.claude/settings.json` starting from the working
-directory and traversing upward. Each agent has settings at its working directory:
+directory and traversing upward. Settings are placed in **parent directories**
+(not inside git clones) so they're found via directory traversal without
+polluting source repositories:
 
 ```
 ~/gt/
 ├── mayor/.claude/settings.json          # Mayor settings
 ├── deacon/.claude/settings.json         # Deacon settings
 └── <rig>/
-    ├── witness/.claude/settings.json    # Witness settings
-    ├── refinery/rig/.claude/settings.json
-    ├── crew/<name>/rig/.claude/settings.json
-    └── polecats/<name>/rig/.claude/settings.json
+    ├── witness/.claude/settings.json    # Witness settings (no rig/ subdir)
+    ├── refinery/.claude/settings.json   # Found by refinery/rig/ via traversal
+    ├── crew/.claude/settings.json       # Shared by all crew/<name>/rig/
+    └── polecats/.claude/settings.json   # Shared by all polecats/<name>/rig/
 ```
 
-**Why this structure?** Child agents inherit the parent's working directory
-when spawned. By keeping each role's files in separate directories, we prevent
-the mayor's CLAUDE.md or settings from affecting polecat behavior.
+**Why parent directories?** Agents working in git clones (like `refinery/rig/`)
+would pollute the source repo if settings were placed there. By putting settings
+one level up, Claude finds them via upward traversal, and all workers of the
+same type share the same settings.
+
+### CLAUDE.md Locations
+
+Role context is delivered via CLAUDE.md files or ephemeral injection:
+
+| Role | CLAUDE.md Location | Method |
+|------|-------------------|--------|
+| **Mayor** | `~/gt/mayor/CLAUDE.md` | On disk |
+| **Deacon** | (none) | Injected via `gt prime` at SessionStart |
+| **Witness** | (none) | Injected via `gt prime` at SessionStart |
+| **Refinery** | `<rig>/refinery/rig/CLAUDE.md` | On disk (inside worktree) |
+| **Crew** | (none) | Injected via `gt prime` at SessionStart |
+| **Polecat** | (none) | Injected via `gt prime` at SessionStart |
+
+Additionally, each rig has `<rig>/mayor/rig/CLAUDE.md` for the per-rig mayor clone
+(used for beads operations, not a running agent).
+
+**Why ephemeral injection?** Writing CLAUDE.md into git clones would:
+1. Pollute source repos when agents commit/push
+2. Leak Gas Town internals into project history
+3. Conflict with project-specific CLAUDE.md files
+
+The `gt prime` command runs at SessionStart hook and injects context without
+persisting it to disk.
 
 ### Sparse Checkout (Source Repo Isolation)
 
-When agents work on source repositories that have their own `.claude/` directory,
-Gas Town uses git sparse checkout to exclude it:
+When agents work on source repositories that have their own Claude Code configuration,
+Gas Town uses git sparse checkout to exclude all context files:
 
 ```bash
-# Automatically configured for worktrees
-git sparse-checkout set --no-cone '/*' '!/.claude/'
+# Automatically configured for worktrees - excludes:
+# - .claude/       : settings, rules, agents, commands
+# - CLAUDE.md      : primary context file
+# - CLAUDE.local.md: personal context file
+# - .mcp.json      : MCP server configuration
+git sparse-checkout set --no-cone '/*' '!/.claude/' '!/CLAUDE.md' '!/CLAUDE.local.md' '!/.mcp.json'
 ```
 
-This ensures the agent uses Gas Town's settings, not the source repo's.
+This ensures agents use Gas Town's context, not the source repo's instructions.
 
 **Doctor check**: `gt doctor` verifies sparse checkout is configured correctly.
+Run `gt doctor --fix` to update legacy configurations missing the newer patterns.
 
 ### Settings Inheritance
 
