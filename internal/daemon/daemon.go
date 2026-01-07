@@ -25,6 +25,7 @@ import (
 	"github.com/steveyegge/gastown/internal/rig"
 	"github.com/steveyegge/gastown/internal/session"
 	"github.com/steveyegge/gastown/internal/tmux"
+	"github.com/steveyegge/gastown/internal/wisp"
 	"github.com/steveyegge/gastown/internal/witness"
 )
 
@@ -399,6 +400,12 @@ func (d *Daemon) ensureWitnessesRunning() {
 // ensureWitnessRunning ensures the witness for a specific rig is running.
 // Discover, don't track: uses Manager.Start() which checks tmux directly (gt-zecmc).
 func (d *Daemon) ensureWitnessRunning(rigName string) {
+// Check rig operational state before auto-starting
+	if operational, reason := d.isRigOperational(rigName); !operational {
+		d.logger.Printf("Skipping witness auto-start for %s: %s", rigName, reason)
+		return
+	}
+
 	// Manager.Start() handles: zombie detection, session creation, env vars, theming,
 	// WaitForClaudeReady, and crucially - startup/propulsion nudges (GUPP).
 	// It returns ErrAlreadyRunning if Claude is already running in tmux.
@@ -432,6 +439,12 @@ func (d *Daemon) ensureRefineriesRunning() {
 // ensureRefineryRunning ensures the refinery for a specific rig is running.
 // Discover, don't track: uses Manager.Start() which checks tmux directly (gt-zecmc).
 func (d *Daemon) ensureRefineryRunning(rigName string) {
+// Check rig operational state before auto-starting
+	if operational, reason := d.isRigOperational(rigName); !operational {
+		d.logger.Printf("Skipping refinery auto-start for %s: %s", rigName, reason)
+		return
+	}
+
 	// Manager.Start() handles: zombie detection, session creation, env vars, theming,
 	// WaitForClaudeReady, and crucially - startup/propulsion nudges (GUPP).
 	// It returns ErrAlreadyRunning if Claude is already running in tmux.
@@ -473,6 +486,39 @@ func (d *Daemon) getKnownRigs() []string {
 		rigs = append(rigs, name)
 	}
 	return rigs
+}
+
+// isRigOperational checks if a rig is in an operational state.
+// Returns true if the rig can have agents auto-started.
+// Returns false (with reason) if the rig is parked, docked, or has auto_restart blocked/disabled.
+func (d *Daemon) isRigOperational(rigName string) (bool, string) {
+	cfg := wisp.NewConfig(d.config.TownRoot, rigName)
+
+	// Check rig status - parked and docked rigs should not have agents auto-started
+	status := cfg.GetString("status")
+	switch status {
+	case "parked":
+		return false, "rig is parked"
+	case "docked":
+		return false, "rig is docked"
+	}
+
+	// Check auto_restart config
+	// If explicitly blocked (nil), auto-restart is disabled
+	if cfg.IsBlocked("auto_restart") {
+		return false, "auto_restart is blocked"
+	}
+
+	// If explicitly set to false, auto-restart is disabled
+	// Note: GetBool returns false for unset keys, so we need to check if it's explicitly set
+	val := cfg.Get("auto_restart")
+	if val != nil {
+		if autoRestart, ok := val.(bool); ok && !autoRestart {
+			return false, "auto_restart is disabled"
+		}
+	}
+
+	return true, ""
 }
 
 // triggerPendingSpawns polls pending polecat spawns and triggers those that are ready.
@@ -708,6 +754,11 @@ func (d *Daemon) checkPolecatHealth(rigName, polecatName string) {
 
 // restartPolecatSession restarts a crashed polecat session.
 func (d *Daemon) restartPolecatSession(rigName, polecatName, sessionName string) error {
+	// Check rig operational state before auto-restarting
+	if operational, reason := d.isRigOperational(rigName); !operational {
+		return fmt.Errorf("cannot restart polecat: %s", reason)
+	}
+
 	// Determine working directory
 	workDir := filepath.Join(d.config.TownRoot, rigName, "polecats", polecatName)
 

@@ -339,6 +339,15 @@ func (d *Daemon) restartSession(sessionName, identity string) error {
 		return fmt.Errorf("parsing identity: %w", err)
 	}
 
+	// Check rig operational state for rig-level agents (witness, refinery, crew, polecat)
+	// Town-level agents (mayor, deacon) are not affected by rig state
+	if parsed.RigName != "" {
+		if operational, reason := d.isRigOperational(parsed.RigName); !operational {
+			d.logger.Printf("Skipping session restart for %s: %s", identity, reason)
+			return fmt.Errorf("cannot restart session: %s", reason)
+		}
+	}
+
 	// Determine working directory
 	workDir := d.getWorkDir(config, parsed)
 	if workDir == "" {
