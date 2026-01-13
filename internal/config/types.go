@@ -73,6 +73,16 @@ func NewTownSettings() *TownSettings {
 type DaemonConfig struct {
 	HeartbeatInterval string `json:"heartbeat_interval,omitempty"` // e.g., "30s"
 	PollInterval      string `json:"poll_interval,omitempty"`      // e.g., "10s"
+
+	// BdSocket is an explicit socket path for the beads daemon (hq-q9n).
+	// If set, overrides the auto-computed socket path.
+	// Useful for containers or environments with restricted /tmp access.
+	BdSocket string `json:"bd_socket,omitempty"`
+
+	// BdSocketDir is a custom base directory for bd daemon sockets (hq-q9n).
+	// Used when the workspace path is too long for Unix socket limits.
+	// Defaults to /tmp if not set.
+	BdSocketDir string `json:"bd_socket_dir,omitempty"`
 }
 
 // DaemonPatrolConfig represents the daemon patrol configuration (mayor/daemon.json).

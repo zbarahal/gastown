@@ -71,3 +71,98 @@ func TestStopAllBdProcesses_DryRun(t *testing.T) {
 		t.Errorf("counts should be non-negative: daemons=%d, activity=%d", daemonsKilled, activityKilled)
 	}
 }
+
+// Tests for configurable socket locations (hq-q9n)
+
+func TestApplySocketConfig_NilConfig(t *testing.T) {
+	cmd := exec.Command("echo", "test")
+	applySocketConfig(cmd, nil)
+
+	// Should not panic and env should be nil (inherit from parent)
+	if cmd.Env != nil {
+		t.Errorf("expected nil env for nil config, got %v", cmd.Env)
+	}
+}
+
+func TestApplySocketConfig_Socket(t *testing.T) {
+	cmd := exec.Command("echo", "test")
+	cfg := &SocketConfig{
+		Socket: "/custom/path/bd.sock",
+	}
+	applySocketConfig(cmd, cfg)
+
+	// Should have BD_SOCKET in env
+	found := false
+	for _, env := range cmd.Env {
+		if env == "BD_SOCKET=/custom/path/bd.sock" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("BD_SOCKET not found in env: %v", cmd.Env)
+	}
+}
+
+func TestApplySocketConfig_SocketDir(t *testing.T) {
+	cmd := exec.Command("echo", "test")
+	cfg := &SocketConfig{
+		SocketDir: "/var/run/beads",
+	}
+	applySocketConfig(cmd, cfg)
+
+	// Should have BD_SOCKET_DIR in env
+	found := false
+	for _, env := range cmd.Env {
+		if env == "BD_SOCKET_DIR=/var/run/beads" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("BD_SOCKET_DIR not found in env: %v", cmd.Env)
+	}
+}
+
+func TestApplySocketConfig_Both(t *testing.T) {
+	cmd := exec.Command("echo", "test")
+	cfg := &SocketConfig{
+		Socket:    "/custom/bd.sock",
+		SocketDir: "/var/run/beads",
+	}
+	applySocketConfig(cmd, cfg)
+
+	// Should have both env vars
+	foundSocket := false
+	foundSocketDir := false
+	for _, env := range cmd.Env {
+		if env == "BD_SOCKET=/custom/bd.sock" {
+			foundSocket = true
+		}
+		if env == "BD_SOCKET_DIR=/var/run/beads" {
+			foundSocketDir = true
+		}
+	}
+	if !foundSocket {
+		t.Errorf("BD_SOCKET not found in env")
+	}
+	if !foundSocketDir {
+		t.Errorf("BD_SOCKET_DIR not found in env")
+	}
+}
+
+func TestApplySocketConfig_EmptyStrings(t *testing.T) {
+	cmd := exec.Command("echo", "test")
+	cfg := &SocketConfig{
+		Socket:    "",
+		SocketDir: "",
+	}
+	applySocketConfig(cmd, cfg)
+
+	// Empty strings should not add env vars
+	for _, env := range cmd.Env {
+		if env == "BD_SOCKET=" || env == "BD_SOCKET_DIR=" {
+			t.Errorf("empty config values should not add empty env vars: %v", cmd.Env)
+		}
+	}
+}

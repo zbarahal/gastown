@@ -4,11 +4,36 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// SocketConfig holds socket configuration for bd daemon calls.
+// These values are passed as environment variables to bd commands.
+type SocketConfig struct {
+	// Socket is an explicit socket path (passed as BD_SOCKET env var)
+	Socket string
+	// SocketDir is a custom temp directory for socket files (passed as BD_SOCKET_DIR env var)
+	SocketDir string
+}
+
+// applySocketConfig applies socket configuration to a command's environment.
+func applySocketConfig(cmd *exec.Cmd, cfg *SocketConfig) {
+	if cfg == nil {
+		return
+	}
+	env := os.Environ()
+	if cfg.Socket != "" {
+		env = append(env, "BD_SOCKET="+cfg.Socket)
+	}
+	if cfg.SocketDir != "" {
+		env = append(env, "BD_SOCKET_DIR="+cfg.SocketDir)
+	}
+	cmd.Env = env
+}
 
 const (
 	gracefulTimeout = 2 * time.Second
@@ -125,8 +150,18 @@ func restartBdDaemons() error { //nolint:unparam // error return kept for future
 // StartBdDaemonIfNeeded starts the bd daemon for a specific workspace if not running.
 // This is a best-effort operation - failures are logged but don't block execution.
 func StartBdDaemonIfNeeded(workDir string) error {
+	return StartBdDaemonWithConfig(workDir, nil)
+}
+
+// StartBdDaemonWithConfig starts the bd daemon with optional socket configuration.
+// If socketCfg is nil, the daemon uses its default socket path.
+// The socket config allows specifying:
+//   - Socket: explicit socket path (via BD_SOCKET env var)
+//   - SocketDir: custom temp directory for sockets (via BD_SOCKET_DIR env var)
+func StartBdDaemonWithConfig(workDir string, socketCfg *SocketConfig) error {
 	cmd := exec.Command("bd", "daemon", "--start")
 	cmd.Dir = workDir
+	applySocketConfig(cmd, socketCfg)
 	return cmd.Run()
 }
 
