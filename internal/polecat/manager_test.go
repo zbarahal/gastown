@@ -292,11 +292,23 @@ func TestAddWithOptions_HasAgentsMD(t *testing.T) {
 		t.Fatalf("mkdir mayor/rig: %v", err)
 	}
 
-	// Initialize git repo in mayor/rig
-	cmd := exec.Command("git", "init")
+	// Initialize git repo in mayor/rig with main branch (tests expect origin/main)
+	cmd := exec.Command("git", "init", "-b", "main")
 	cmd.Dir = mayorRig
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
+	}
+
+	// Configure git identity for test commits
+	for _, cfg := range [][]string{
+		{"config", "user.name", "Test User"},
+		{"config", "user.email", "test@example.com"},
+	} {
+		cfgCmd := exec.Command("git", cfg...)
+		cfgCmd.Dir = mayorRig
+		if out, err := cfgCmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", cfg[0], err, out)
+		}
 	}
 
 	// Create AGENTS.md with test content
@@ -366,11 +378,23 @@ func TestAddWithOptions_AgentsMDFallback(t *testing.T) {
 		t.Fatalf("mkdir mayor/rig: %v", err)
 	}
 
-	// Initialize git repo in mayor/rig WITHOUT AGENTS.md in git
-	cmd := exec.Command("git", "init")
+	// Initialize git repo in mayor/rig WITHOUT AGENTS.md in git (use main branch)
+	cmd := exec.Command("git", "init", "-b", "main")
 	cmd.Dir = mayorRig
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
+	}
+
+	// Configure git identity for test commits
+	for _, cfg := range [][]string{
+		{"config", "user.name", "Test User"},
+		{"config", "user.email", "test@example.com"},
+	} {
+		cfgCmd := exec.Command("git", cfg...)
+		cfgCmd.Dir = mayorRig
+		if out, err := cfgCmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", cfg[0], err, out)
+		}
 	}
 
 	// Create a dummy file and commit (repo needs at least one commit)

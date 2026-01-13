@@ -40,12 +40,48 @@ func TestQuerySessionEvents_FindsEventsFromAllLocations(t *testing.T) {
 		t.Fatalf("creating town directory: %v", err)
 	}
 
-	// Initialize a git repo (required for gt install)
-	gitInitCmd := exec.Command("git", "init")
+	// Initialize a git repo (required for gt install) - use main branch explicitly
+	gitInitCmd := exec.Command("git", "init", "-b", "main")
 	gitInitCmd.Dir = townRoot
 	if out, err := gitInitCmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
+
+	// Configure git identity for test commits
+	for _, cfg := range [][]string{
+		{"config", "user.name", "Test User"},
+		{"config", "user.email", "test@example.com"},
+	} {
+		cmd := exec.Command("git", cfg...)
+		cmd.Dir = townRoot
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", cfg[0], err, out)
+		}
+	}
+
+	// Register cleanup to remove git worktrees before t.TempDir cleanup runs.
+	// Git worktrees have .git files that reference the main repo, making directory
+	// removal fail unless worktrees are properly removed first.
+	t.Cleanup(func() {
+		// Remove any worktrees in the town
+		repoGitPath := filepath.Join(townRoot, ".repo.git")
+		if _, err := os.Stat(repoGitPath); err == nil {
+			// List and prune worktrees
+			pruneCmd := exec.Command("git", "--git-dir="+repoGitPath, "worktree", "prune")
+			pruneCmd.Run() // Ignore errors - best effort cleanup
+			// Remove worktree references
+			listCmd := exec.Command("git", "--git-dir="+repoGitPath, "worktree", "list", "--porcelain")
+			if out, err := listCmd.CombinedOutput(); err == nil {
+				// Parse output and remove each worktree
+				for _, line := range filepath.SplitList(string(out)) {
+					if filepath.IsAbs(line) {
+						rmCmd := exec.Command("git", "--git-dir="+repoGitPath, "worktree", "remove", "--force", line)
+						rmCmd.Run()
+					}
+				}
+			}
+		}
+	})
 
 	// Use gt install to set up the town
 	gtInstallCmd := exec.Command("gt", "install")
@@ -66,6 +102,18 @@ func TestQuerySessionEvents_FindsEventsFromAllLocations(t *testing.T) {
 	cloneCmd := exec.Command("git", "clone", bareRepo, tempClone)
 	if out, err := cloneCmd.CombinedOutput(); err != nil {
 		t.Fatalf("git clone bare: %v\n%s", err, out)
+	}
+
+	// Configure git identity in tempClone for commits
+	for _, cfg := range [][]string{
+		{"config", "user.name", "Test User"},
+		{"config", "user.email", "test@example.com"},
+	} {
+		cmd := exec.Command("git", cfg...)
+		cmd.Dir = tempClone
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s (tempClone): %v\n%s", cfg[0], err, out)
+		}
 	}
 
 	// Add initial commit to bare repo
