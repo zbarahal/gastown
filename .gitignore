@@ -16,6 +16,7 @@
 # OS
 .DS_Store
 Thumbs.db
+core
 
 # Claude Code local state
 .claude/
