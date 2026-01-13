@@ -297,6 +297,60 @@ Gas Town supports multiple AI coding runtimes. Per-rig runtime settings are in `
   after the session is ready: `gt prime`, optional `gt mail check --inject`
   for autonomous roles, and `gt nudge deacon session-started`.
 
+## Daemon Configuration
+
+Gas Town uses the beads daemon (`bd daemon`) for efficient issue tracking operations. Daemon settings are in `mayor/config.json` under the `daemon` key.
+
+```json
+{
+  "daemon": {
+    "heartbeat_interval": "30s",
+    "poll_interval": "10s",
+    "bd_socket": "/custom/path/bd.sock",
+    "bd_socket_dir": "/var/run/beads"
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `heartbeat_interval` | How often the daemon sends heartbeats (e.g., "30s") |
+| `poll_interval` | How often to poll for changes (e.g., "10s") |
+| `bd_socket` | Explicit socket path for the beads daemon. Overrides auto-computed path. |
+| `bd_socket_dir` | Custom base directory for daemon socket files. Defaults to `/tmp`. |
+
+### Socket Configuration
+
+Unix domain sockets have a path length limit of ~107 characters. When your workspace path is long (common in nested project structures or containers), the auto-computed socket path may exceed this limit.
+
+**Solutions:**
+
+1. **Use `bd_socket_dir`** - Set a shorter base directory for socket files:
+   ```json
+   {
+     "daemon": {
+       "bd_socket_dir": "/tmp/bd"
+     }
+   }
+   ```
+
+2. **Use `bd_socket`** - Specify an explicit socket path:
+   ```json
+   {
+     "daemon": {
+       "bd_socket": "/tmp/my-project.sock"
+     }
+   }
+   ```
+
+**Environment Variables:**
+
+These settings are passed to `bd` commands via environment variables:
+- `bd_socket` → `BD_SOCKET`
+- `bd_socket_dir` → `BD_SOCKET_DIR`
+
+This is useful for containers or environments with restricted `/tmp` access.
+
 ## Key Commands
 
 ### Workspace Management
